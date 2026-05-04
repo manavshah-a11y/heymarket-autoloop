@@ -295,3 +295,41 @@ Weakest touch overall: T3 — 42/60
 Sequence file:         verticals/creditunions/sequences/sequence_it_director.md
 Log file:              verticals/creditunions/logs/log_it_director_opener.md
 ═══════════════════════════════════════
+
+═══════════════════════════════════════
+RUN COMPLETE
+Vertical:             creditunions
+Persona:              it_director
+Iterations per touch: 2
+Total API calls:      8
+
+Touch scores (best variant per touch):
+  T1: 45/60  T2: 48/60
+
+Score progression per touch:
+  T1: 45/60 (1 iteration)
+  T2: 48/60 (1 iteration)
+
+Weakest touch overall: T1 — 45/60
+Sequence file:         verticals/creditunions/sequences/sequence_it_director.md
+Log file:              verticals/creditunions/logs/log_it_director_opener.md
+═══════════════════════════════════════
+
+═══════════════════════════════════════
+RUN COMPLETE
+Vertical:             creditunions
+Persona:              it_director
+Iterations per touch: 2
+Total API calls:      8
+
+Touch scores (best variant per touch):
+  T1: 45/60  T2: 48/60
+
+Score progression per touch:
+  T1: 45/60 (1 iteration)
+  T2: 48/60 (1 iteration)
+
+Weakest touch overall: T1 — 45/60
+Sequence file:         verticals/creditunions/sequences/sequence_it_director.md
+Log file:              verticals/creditunions/logs/log_it_director_opener.md
+═══════════════════════════════════════
