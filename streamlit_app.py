@@ -8,10 +8,19 @@ import copy
 import datetime
 import anthropic
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).parent
 VERTICALS_DIR = BASE_DIR / "verticals"
 SHARED_DIR = BASE_DIR / "shared"
+
+load_dotenv(BASE_DIR / ".env")
+
+def _get_api_key() -> str:
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set. Add it as an environment variable.")
+    return key
 
 st.set_page_config(
     page_title="Autoloop",
@@ -75,7 +84,7 @@ def load_learnings(vertical: str, persona: str) -> str:
 
 def call_claude_editor(vertical: str, persona: str, current_touches: list, chat_history: list) -> dict:
     """Call Claude to make structured edits to the sequence."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or (BASE_DIR / ".env").read_text().split("ANTHROPIC_API_KEY=")[-1].split()[0]
+    api_key = _get_api_key()
     client = anthropic.Anthropic(api_key=api_key)
     persona_path = VERTICALS_DIR / vertical / "personas" / f"{persona}.md"
     persona_content = persona_path.read_text() if persona_path.exists() else ""
@@ -129,7 +138,7 @@ def call_feedback_distillation(vertical: str, persona: str, original: list, appr
     if not changed:
         return ""
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or (BASE_DIR / ".env").read_text().split("ANTHROPIC_API_KEY=")[-1].split()[0]
+    api_key = _get_api_key()
     client = anthropic.Anthropic(api_key=api_key)
 
     persona_path = VERTICALS_DIR / vertical / "personas" / f"{persona}.md"
@@ -439,39 +448,45 @@ def page_run_sequence():
             st.error(f"Process exited with code {returncode}")
 
 
+PROMPT_TEMPLATE = """You are helping me set up automated cold outreach for a new industry vertical. I use a tool called Autoloop that targets specific buyer personas with multi-touch email sequences.
+
+Industry I want to target: [FILL IN YOUR INDUSTRY]
+
+Please research this industry (or ask me targeted questions if you need my specific perspective) and then output a complete ICP brief in this format:
+
+---
+vertical: [single word slug, e.g. "healthcare"]
+sub_industries: [comma-separated list of sub-segments in scope]
+company_size: [employee range, revenue range, and segment label]
+segment: [smb / midmarket / enterprise]
+tech_stack: [key tools this industry uses, especially CRM and communication tools]
+buyer_personas: [comma-separated job titles of the people who buy or champion this tool]
+top_use_cases: [comma-separated list of the top 4-6 use cases for business texting in this industry]
+competitors: [other texting or messaging vendors this industry uses]
+qualification_signals: [specific signals that indicate a good prospect — tech stack, team size, initiatives, etc.]
+---
+
+Feel free to ask me 2-3 clarifying questions before generating the output if you need my specific insights (e.g. which personas we prefer, deal size, existing customers in this space)."""
+
+
 def page_new_vertical():
     st.title("New Vertical")
-    st.caption("Fill out the ICP and Autoloop will derive a persona, sequence arc, and pain angles.")
 
-    with st.form("icp_form"):
-        vertical = st.text_input("Vertical *", placeholder="healthcare", help="Single word slug, e.g. healthcare")
-        sub_industries = st.text_input("Sub-industries", placeholder="hospitals, outpatient clinics, medical groups")
-        company_size = st.text_input("Company size", placeholder="500-5000 employees, $100M-$1B revenue")
-        segment = st.text_input("Segment", placeholder="midmarket")
-        tech_stack = st.text_input("Tech stack", placeholder="Epic EHR, HubSpot or Salesforce CRM", help="Key tools used")
-        buyer_personas = st.text_input("Buyer personas", placeholder="IT Director, Operations Manager")
-        top_use_cases = st.text_input("Top use cases", placeholder="patient appointment reminders, internal staff coordination")
-        competitors = st.text_input("Competitors", placeholder="Weave, Relatient, Twilio")
-        qualification_signals = st.text_input("Qualification signals", placeholder="HubSpot or Salesforce in stack, 200+ staff")
+    st.markdown("**Step 1 — Copy this prompt**")
+    st.caption("Paste into Claude, ChatGPT, or any AI. It will research the vertical and return structured output.")
+    st.code(PROMPT_TEMPLATE, language=None)
 
-        submitted = st.form_submit_button("Derive Vertical", type="primary")
+    st.markdown("**Step 2 — Paste AI output**")
+    raw_input = st.text_area(
+        "AI output",
+        placeholder="Paste the AI's response here...",
+        height=300,
+        label_visibility="collapsed",
+    )
 
-    if submitted and vertical:
-        icp_content = "\n".join([
-            "# ICP Definition",
-            f"vertical: {vertical}",
-            f"sub_industries: {sub_industries}",
-            f"company_size: {company_size}",
-            f"segment: {segment}",
-            f"tech_stack: {tech_stack}",
-            f"buyer_personas: {buyer_personas}",
-            f"top_use_cases: {top_use_cases}",
-            f"competitors: {competitors}",
-            f"qualification_signals: {qualification_signals}",
-        ])
-
+    if st.button("Derive Vertical", type="primary", disabled=not raw_input.strip()):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp:
-            tmp.write(icp_content)
+            tmp.write(raw_input)
             tmp_path = tmp.name
 
         st.divider()
@@ -482,31 +497,34 @@ def page_new_vertical():
         os.unlink(tmp_path)
 
         if returncode == 0:
-            st.success(f"Vertical **{vertical}** derived successfully.")
             program = (BASE_DIR / "shared" / "program.md").read_text()
             last_persona_match = re.findall(r"SEARCH SPACE — (.+?) \(", program)
             derived_persona = last_persona_match[-1].lower().replace(" ", "_") if last_persona_match else "it_director"
+            last_vertical_match = re.findall(r"SEARCH SPACE — .+? \((.+?)\)", program)
+            derived_vertical = last_vertical_match[-1] if last_vertical_match else ""
 
+            st.success(f"Vertical **{derived_vertical or 'derived'}** created successfully.")
             st.divider()
             st.subheader("Review Derived Files")
 
-            vdir = VERTICALS_DIR / vertical
-            icp_files = list(vdir.glob("icp_*.md"))
-            persona_files = list((vdir / "personas").glob("*.md")) if (vdir / "personas").exists() else []
+            if derived_vertical:
+                vdir = VERTICALS_DIR / derived_vertical
+                icp_files = list(vdir.glob("icp_*.md"))
+                persona_files = list((vdir / "personas").glob("*.md")) if (vdir / "personas").exists() else []
 
-            for f in icp_files:
-                with st.expander(f"ICP — {f.name}", expanded=True):
-                    st.markdown(f.read_text())
+                for f in icp_files:
+                    with st.expander(f"ICP — {f.name}", expanded=True):
+                        st.markdown(f.read_text())
 
-            for f in persona_files:
-                with st.expander(f"Persona — {f.name}", expanded=True):
-                    st.markdown(f.read_text())
+                for f in persona_files:
+                    with st.expander(f"Persona — {f.name}", expanded=True):
+                        st.markdown(f.read_text())
 
-            st.divider()
-            if st.button(f"Run Sequence for {vertical} / {derived_persona} →"):
-                st.session_state["run_vertical"] = vertical
-                st.session_state["run_persona"] = derived_persona
-                st.switch_page(pg_run)
+                st.divider()
+                if st.button(f"Run Sequence for {derived_vertical} / {derived_persona} →"):
+                    st.session_state["run_vertical"] = derived_vertical
+                    st.session_state["run_persona"] = derived_persona
+                    st.switch_page(pg_run)
         else:
             st.error(f"Derive failed (exit code {returncode})")
 

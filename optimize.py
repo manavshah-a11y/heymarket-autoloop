@@ -914,11 +914,7 @@ def main():
 
     wc = word_count(product_knowledge)
     if wc < 300:
-        print(f"WARNING: product_knowledge.md looks thin ({wc} words).")
-        print("Run scrape.py first and verify output before continuing.")
-        answer = input("Proceed anyway? (y/n): ").strip().lower()
-        if answer != "y":
-            sys.exit(0)
+        print(f"WARNING: product_knowledge.md looks thin ({wc} words). Run scrape.py to improve results. Proceeding anyway.")
 
     active_touches = TOUCH_SCHEDULE[:max(1, min(args.touches, len(TOUCH_SCHEDULE)))]
     total_api_calls = iterations * 2 * len(active_touches)
