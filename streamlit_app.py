@@ -1,3 +1,11 @@
+"""
+Streamlit UI for Autoloop — 6-page app for managing cold email sequences.
+
+Pages: Dashboard, View Sequence, Run Sequence, New Vertical, Review Sequence,
+       Knowledge Base (shared knowledge files).
+
+Calls optimize.py via subprocess. Reads/writes verticals/ and shared/.
+"""
 import streamlit as st
 import os
 import re
@@ -13,10 +21,12 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 VERTICALS_DIR = BASE_DIR / "verticals"
 SHARED_DIR = BASE_DIR / "shared"
+MODEL = "claude-sonnet-4-20250514"
 
 load_dotenv(BASE_DIR / ".env")
 
 def _get_api_key() -> str:
+    """Return ANTHROPIC_API_KEY from environment. Raises RuntimeError if missing."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set. Add it as an environment variable.")
@@ -32,9 +42,11 @@ st.set_page_config(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def to_title(slug: str) -> str:
+    """Convert underscore slug to title-cased display name."""
     return slug.replace("_", " ").title()
 
 def get_verticals() -> list[dict]:
+    """Scan verticals/ and return structured list of verticals with their personas and sequence status."""
     if not VERTICALS_DIR.exists():
         return []
     result = []
@@ -107,7 +119,7 @@ def call_claude_editor(vertical: str, persona: str, current_touches: list, chat_
     )
 
     resp = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=MODEL,
         max_tokens=2000,
         system=system,
         messages=[{"role": m["role"], "content": m["content"]} for m in chat_history],
@@ -116,7 +128,8 @@ def call_claude_editor(vertical: str, persona: str, current_touches: list, chat_
     raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(raw)
-    except Exception:
+    except Exception as e:
+        print(f"WARNING: Claude editor returned unparseable JSON: {e}. Raw: {raw[:200]}")
         return {"explanation": raw, "edits": []}
 
 def save_draft(vertical: str, persona: str, touches: list):
@@ -171,7 +184,7 @@ def call_feedback_distillation(vertical: str, persona: str, original: list, appr
     )
 
     resp = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=MODEL,
         max_tokens=1000,
         system=system,
         messages=[{"role": "user", "content": f"Here are the human-approved changes:\n{diff_text}"}],
@@ -224,13 +237,17 @@ def serialize_approved(vertical: str, persona: str, touches: list, original: lis
     return feedback_learnings
 
 def stream_process(cmd: list[str]):
+    """Run cmd as a subprocess and stream stdout line-by-line into a Streamlit code block. Returns exit code."""
     output_box = st.empty()
     lines: list[str] = []
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, cwd=str(BASE_DIR)
     )
-    for raw in iter(proc.stdout.readline, ""):  # type: ignore[union-attr]
+    while True:
+        raw = proc.stdout.readline()  # type: ignore[union-attr]
+        if not raw:
+            break
         line = raw.rstrip()
         lines.append(line)
         output_box.code("\n".join(lines[-80:]), language=None)
@@ -241,7 +258,9 @@ def stream_process(cmd: list[str]):
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
 def page_dashboard():
+    """Show all verticals and personas with sequence scores and quick-action buttons."""
     st.title("Dashboard")
+    st.caption("All verticals and personas. Green = score ≥ 45, yellow = ≥ 40, red < 40.")
 
     verticals = get_verticals()
     all_personas = [
@@ -305,7 +324,9 @@ def page_dashboard():
 
 
 def page_view_sequence():
+    """Read-only view of a generated sequence with per-touch scores and distilled learnings."""
     st.title("Sequence Viewer")
+    st.caption("Read-only. To edit or approve, go to Review Sequence.")
 
     verticals = get_verticals()
     vertical_names = [v["vertical"] for v in verticals]
@@ -385,7 +406,9 @@ def page_view_sequence():
 
 
 def page_run_sequence():
+    """Launch the optimizer for a vertical/persona and stream output to the UI."""
     st.title("Run Sequence")
+    st.caption("Generates email variants per touch, scores them, and picks the winner. Streams live output as it runs.")
 
     verticals = get_verticals()
     vertical_names = [v["vertical"] for v in verticals]
@@ -424,7 +447,7 @@ def page_run_sequence():
     touches = c4.slider("Touches to generate", 1, 8, 8)
 
     api_calls = iterations * 2 * touches
-    st.caption(f"{api_calls} API calls · ~{round(iterations * touches * 0.5)} min estimated")
+    st.info(f"**{api_calls} API calls** · ~{round(iterations * touches * 0.5)} min · ~${api_calls * 0.004:.2f} estimated cost")
 
     if st.button("▶ Start Run", type="primary", disabled=not persona):
         st.divider()
@@ -470,13 +493,16 @@ Feel free to ask me 2-3 clarifying questions before generating the output if you
 
 
 def page_new_vertical():
+    """Wizard to derive a new vertical's ICP, persona, and pain angles from AI-generated output."""
     st.title("New Vertical")
+    st.caption("Creates ICP, persona, and pain angles for a new industry target. No manual file editing required.")
 
     st.markdown("**Step 1 — Copy this prompt**")
     st.caption("Paste into Claude, ChatGPT, or any AI. It will research the vertical and return structured output.")
     st.code(PROMPT_TEMPLATE, language=None)
 
     st.markdown("**Step 2 — Paste AI output**")
+    st.caption("Autoloop will extract: vertical slug, ICP, buyer persona, and 8 pain angles.")
     raw_input = st.text_area(
         "AI output",
         placeholder="Paste the AI's response here...",
@@ -530,8 +556,10 @@ def page_new_vertical():
 
 
 def page_review_sequence():
+    """Inline editor and AI chat for refining a sequence before approving and distilling learnings."""
     st.title("Review Sequence")
     st.caption("Edit touches inline or ask the AI assistant, then approve to lock and save.")
+    st.caption("**Save draft** syncs edits to View Sequence (reversible). **Approve** locks the sequence, writes approved_{persona}.md, and distills your changes into learnings for the next run.")
 
     verticals = get_verticals()
     vnames = [v["vertical"] for v in verticals]
@@ -768,7 +796,9 @@ def page_review_sequence():
 
 
 def page_master_instructions():
-    st.title("Master Instructions")
+    """Edit shared knowledge files (program rules, product context, proof bank) that inform every sequence."""
+    st.title("Knowledge Base")
+    st.caption("Shared files that inform every sequence. Edits here apply to all future optimizer runs.")
 
     shared_files = {
         "program.md": "Program Rules",

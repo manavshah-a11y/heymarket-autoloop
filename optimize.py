@@ -1,3 +1,14 @@
+"""
+Sequence generation engine for the Heymarket outreach optimizer.
+
+CLI: python optimize.py --vertical <name> --persona <slug> --iterations 5 --touches 8
+Derive mode: python optimize.py --derive --icp <path_to_filled_template>
+
+Outputs:
+  verticals/<vertical>/sequences/sequence_<persona>.md  — final sequence
+  verticals/<vertical>/logs/log_<persona>_opener.md     — full iteration log
+  verticals/<vertical>/learnings/learnings_<persona>.md — distilled learnings
+"""
 import argparse
 import os
 import sys
@@ -21,6 +32,7 @@ TOUCH_SCHEDULE = [
 # ── File I/O ──────────────────────────────────────────────────────────────────
 
 def load_file(path):
+    """Read and return file contents. Exits with an error message if the file is not found."""
     if not os.path.exists(path):
         print(f"ERROR: Required file not found: {path}")
         sys.exit(1)
@@ -28,17 +40,36 @@ def load_file(path):
         return f.read()
 
 
+def load_api_key() -> str:
+    """Load ANTHROPIC_API_KEY from environment or .env file. Exits on missing key."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key and os.path.exists(".env"):
+        with open(".env", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ANTHROPIC_API_KEY="):
+                    api_key = line.split("=", 1)[1].strip()
+                    break
+    if not api_key:
+        print("ERROR: ANTHROPIC_API_KEY not set.")
+        sys.exit(1)
+    return api_key
+
+
 def word_count(text):
+    """Return the number of whitespace-delimited words in text."""
     return len(text.split())
 
 
 def append_to_file(path, content):
+    """Append content to a file, creating parent directories as needed."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(content)
 
 
 def write_file(path, content):
+    """Write content to a file, creating parent directories as needed."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -47,6 +78,7 @@ def write_file(path, content):
 # ── Parsing helpers ───────────────────────────────────────────────────────────
 
 def extract_between(text, open_tag, close_tag):
+    """Return the substring between open_tag and close_tag. Returns empty string if open_tag is missing."""
     if open_tag not in text:
         return ""
     after_open = text.split(open_tag, 1)[1]
@@ -56,6 +88,7 @@ def extract_between(text, open_tag, close_tag):
 
 
 def parse_variants(response_text):
+    """Parse <variant_a/b/c> tags from a generation response. Returns dict of letter → variant text."""
     variants = {}
     for letter in ["a", "b", "c"]:
         variants[letter] = extract_between(response_text, f"<variant_{letter}>", f"</variant_{letter}>")
@@ -63,6 +96,7 @@ def parse_variants(response_text):
 
 
 def parse_scores(response_text):
+    """Parse the <scores> block from an evaluation response. Returns dict with per-variant score dicts, winner, reasoning, and weakest_criterion."""
     scores_block = extract_between(response_text, "<scores>", "</scores>")
     result = {
         "variant_a": {}, "variant_b": {}, "variant_c": {},
@@ -352,6 +386,7 @@ def validate_variant(variant_text):
 # ── Search space parsing ──────────────────────────────────────────────────────
 
 def parse_search_space(program_md, persona):
+    """Extract the 8 pain angles for a persona from the SEARCH SPACE section in program.md."""
     persona_display = persona.replace("_", " ").title()
     marker = f"SEARCH SPACE — {persona_display}"
 
@@ -426,7 +461,7 @@ def parse_log_resume(log_path, iterations, touch_schedule):
                     try:
                         score = int(score_part.split("/")[0].strip())
                     except ValueError:
-                        pass
+                        print("    WARNING: Could not parse score from log entry, skipping")
                     break
 
             # Extract variant text
@@ -525,7 +560,7 @@ def call_generate(client, context_files, persona, vertical,
                   locked_winners, current_winner_score,
                   iteration_history, unused_angles, angles_used_in_sequence,
                   proof_bank, learnings_block="", retry_note=""):
-
+    """Generate 3 email variants for a touch. Returns raw Claude response text containing <variant_a/b/c> blocks."""
     product_knowledge, program_md, icp_md, persona_md = context_files
     persona_display = persona.replace("_", " ").title()
 
@@ -610,6 +645,7 @@ Subject: ...
 
 
 def call_evaluate(client, variants_text, persona, vertical, touch_num, day, touch_type):
+    """Score all 3 variants on 6 criteria and pick the winner. Returns raw Claude response text with a <scores> block."""
     persona_display = persona.replace("_", " ").title()
 
     prompt = f"""You are a skeptical {persona_display} at a $300M {vertical} company.
@@ -814,6 +850,7 @@ Pain angle 8: **[name]** — [description]
 
 
 def main():
+    """CLI entry point. Parses args, loads context, runs the iterative optimization loop, and writes the final sequence file."""
     parser = argparse.ArgumentParser(description="Heymarket outreach sequence optimizer")
     parser.add_argument("--vertical", required=False)
     parser.add_argument("--persona", required=False)
@@ -831,18 +868,7 @@ def main():
         icp_text = load_file(args.icp)
         product_knowledge = load_file("shared/product_knowledge.md")
 
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key and os.path.exists(".env"):
-            with open(".env", "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("ANTHROPIC_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip()
-                        break
-        if not api_key:
-            print("ERROR: ANTHROPIC_API_KEY not set.")
-            sys.exit(1)
-
+        api_key = load_api_key()
         client = anthropic.Anthropic(api_key=api_key)
         print("Deriving persona, ICP, and pain angles from template...")
         derived = call_derive(client, icp_text, product_knowledge)
@@ -938,18 +964,7 @@ def main():
             print()
 
     # Load API key
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key and os.path.exists(".env"):
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("ANTHROPIC_API_KEY="):
-                    api_key = line.split("=", 1)[1].strip()
-                    break
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set.")
-        sys.exit(1)
-
+    api_key = load_api_key()
     client = anthropic.Anthropic(api_key=api_key)
 
     # ── Step 2: Iterative optimization loop — all 8 touches ──────────────────
@@ -1099,6 +1114,7 @@ def main():
             scores = parse_scores(eval_response)
             winner_letter = scores.get("winner", "a").strip().lower()
             if winner_letter not in ["a", "b", "c"]:
+                print(f"    WARNING: Unexpected winner value '{winner_letter}' — defaulting to 'a'")
                 winner_letter = "a"
 
             winner_text = variants.get(winner_letter, "")

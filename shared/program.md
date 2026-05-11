@@ -167,3 +167,23 @@ Pain angle 6: **Fraud Alert Response Time** — Current fraud verification proce
 Pain angle 7: **Loan Origination Communication Gaps** — Manual loan status updates and document requests slow down time-to-close while creating additional IT support burden for staff using disconnected systems.
 
 Pain angle 8: **Multi-Department Tool Sprawl** — Different departments using separate communication tools creates security risks, integration complexity, and higher IT management overhead without unified visibility.
+
+## SEARCH SPACE — Practice Manager (wellness)
+
+Use these 8 pain angles to generate T1 variants. Rotate through angles across iterations. No angle repeated until all 8 have been used.
+
+Pain angle 1: **Last-Minute Cancellation Avalanche** — When high-ticket treatments get canceled day-of, practices lose thousands in revenue and struggle to fill premium slots, especially when staff can't have real 2-way conversations to offer alternatives or reschedule effectively.
+
+Pain angle 2: **Social Media Lead Death Spiral** — Instagram and Facebook ads generate expensive leads that die within 15 minutes if not contacted, but staff juggling phones can't respond fast enough from EMR systems that only send one-way appointment reminders.
+
+Pain angle 3: **Personal Phone Chaos** — Staff using personal cells for patient communication creates HIPAA nightmares, knowledge silos when people quit, and zero oversight for practice managers trying to ensure consistent patient experience.
+
+Pain angle 4: **New Hire Training Bottleneck** — Every front desk turnover means weeks of training new staff on complex treatment protocols and communication workflows, while patient experience suffers and existing staff burn out covering gaps.
+
+Pain angle 5: **Multi-Location Communication Anarchy** — Each location develops its own patient communication style and tools, making it impossible to maintain brand consistency or implement standardized pre-op/aftercare protocols across the practice.
+
+Pain angle 6: **High-Touch Treatment Follow-Up Failure** — Premium services like CoolSculpting and Morpheus8 require extensive aftercare communication, but manual check-ins overwhelm staff and inconsistent follow-up hurts patient satisfaction and referrals.
+
+Pain angle 7: **EMR Texting Straightjacket** — Built-in SMS features can only send robotic appointment reminders, but real patient relationships need conversational flexibility to handle questions, concerns, and the personal touch that drives retention.
+
+Pain angle 8: **Lead Response Time Anxiety** — Practice managers watch expensive social media leads pile up in "contact us" forms while staff juggle phone calls, knowing that every delayed response is money walking out the door to competitors who text back instantly.

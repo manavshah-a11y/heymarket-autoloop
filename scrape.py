@@ -1,7 +1,18 @@
+"""
+Web scraper to refresh shared/product_knowledge.md from heymarket.com.
+
+Fetches 8 pages (home, product, solutions, pricing, etc.), extracts value props,
+integrations, customer stories, vertical mentions, and differentiators. Run when
+product knowledge feels stale:
+  python scrape.py
+"""
 import os
 import re
+import pathlib
 import requests
 from bs4 import BeautifulSoup
+
+BASE_DIR = pathlib.Path(__file__).parent
 
 HEADERS = {
     "User-Agent": (
@@ -30,6 +41,7 @@ INDUSTRY_KEYWORDS = {
 
 
 def fetch_page(url):
+    """Fetch a URL and return its HTML, or None on failure."""
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
         resp.raise_for_status()
@@ -41,6 +53,7 @@ def fetch_page(url):
 
 
 def clean_soup(html):
+    """Parse HTML and strip scripts, styles, nav, footer, and cookie/modal noise."""
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.find_all(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
@@ -56,11 +69,13 @@ def clean_soup(html):
 
 
 def get_sentences(text):
+    """Split text into sentences longer than 20 characters."""
     sentences = re.split(r'(?<=[.!?])\s+', text)
     return [s.strip() for s in sentences if len(s.strip()) > 20]
 
 
 def detect_industry(text):
+    """Return a list of industry names whose keywords appear in text."""
     text_lower = text.lower()
     found = []
     for industry, keywords in INDUSTRY_KEYWORDS.items():
@@ -70,6 +85,7 @@ def detect_industry(text):
 
 
 def extract_core_value_props(all_text):
+    """Extract up to 20 sentences that describe Heymarket's core value propositions."""
     keywords = ["two-way", "two way", "conversational", "business messaging",
                  "team inbox", "shared inbox", "business texting", "sms platform"]
     sentences = get_sentences(all_text)
@@ -85,6 +101,7 @@ def extract_core_value_props(all_text):
 
 
 def extract_integrations(all_text):
+    """Return (flagged, other) integration lists. Flagged = key CRM partners."""
     integration_names = [
         "HubSpot", "Salesforce", "Zapier", "Slack", "Zendesk", "Shopify",
         "Microsoft Teams", "Google", "ServiceNow", "Zoho", "Intercom",
@@ -103,6 +120,7 @@ def extract_integrations(all_text):
 
 
 def extract_customer_stories(pages):
+    """Extract up to 20 customer story paragraphs from the customers and blog pages."""
     stories = []
     for url, text in pages.items():
         if "customers" not in url and "blog" not in url:
@@ -120,6 +138,7 @@ def extract_customer_stories(pages):
 
 
 def extract_vertical_mentions(all_text):
+    """Extract up to 20 sentences that mention a tracked industry vertical."""
     sentences = get_sentences(all_text)
     matches = []
     seen = set()
@@ -136,6 +155,7 @@ def extract_vertical_mentions(all_text):
 
 
 def extract_differentiators(all_text):
+    """Extract up to 15 sentences contrasting two-way conversational vs one-way broadcast messaging."""
     keywords = ["one-way", "one way", "broadcast", "bulk sms", "blast",
                  "two-way", "conversational", "personal", "personalized", "reply"]
     sentences = get_sentences(all_text)
@@ -151,16 +171,15 @@ def extract_differentiators(all_text):
 
 
 def extract_blog_topics(blog_html):
+    """Extract up to 20 blog post titles and summaries from the blog page HTML."""
     if not blog_html:
         return []
     soup = clean_soup(blog_html)
     topics = []
-    # Try common blog post title patterns
     for tag in soup.find_all(["h2", "h3", "h4"]):
         title = tag.get_text(strip=True)
         if len(title) < 10 or len(title) > 200:
             continue
-        # Try to get a summary from sibling/parent text
         summary = ""
         parent = tag.find_parent()
         if parent:
@@ -178,7 +197,8 @@ def extract_blog_topics(blog_html):
 
 
 def main():
-    os.makedirs("shared", exist_ok=True)
+    """Scrape heymarket.com and write extracted knowledge to shared/product_knowledge.md."""
+    (BASE_DIR / "shared").mkdir(exist_ok=True)
 
     pages = {}
     blog_html = None
@@ -263,7 +283,7 @@ def main():
     lines.append("")
 
     output = "\n".join(lines)
-    output_path = "shared/product_knowledge.md"
+    output_path = BASE_DIR / "shared" / "product_knowledge.md"
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(output)
 
